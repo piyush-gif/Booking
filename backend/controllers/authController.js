@@ -1,5 +1,4 @@
 const bcrypt = require("bcrypt");
-const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
@@ -10,10 +9,14 @@ const hashRefresh = (token) => {
   return crypto.createHash("sha256").update(token).digest("hex");
 };
 
-const issueTokens = async (res, userId) => {
-  const accessToken = jwt.sign({ sub: userId }, process.env.ACCESS_TOKEN, {
-    expiresIn: "15m",
-  });
+const issueTokens = async (res, userId, role) => {
+  const accessToken = jwt.sign(
+    { sub: userId, role: role },
+    process.env.ACCESS_TOKEN,
+    {
+      expiresIn: "15m",
+    },
+  );
 
   const refreshToken = jwt.sign({ sub: userId }, process.env.REFRESH_TOKEN, {
     expiresIn: "7d",
@@ -66,7 +69,7 @@ const login = async (req, res) => {
     if (!match) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
-    await issueTokens(res, user._id);
+    await issueTokens(res, user._id, user.role);
     res.status(200).json({ id: user._id, email: user.email });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -87,7 +90,11 @@ const refresh = async (req, res) => {
     if (!stored) {
       return res.status(401).json({ error: "Invalid refresh token" });
     }
-    await issueTokens(res, payload.sub);
+    const user = await User.findById(payload.sub);
+    if (!user) {
+      return res.status(401).json({ error: "User no longer exists" });
+    }
+    await issueTokens(res, user._id, user.role);
     res.status(200).json({ message: "Refreshed" });
   } catch (error) {
     res.status(500).json({ error: error.message });
