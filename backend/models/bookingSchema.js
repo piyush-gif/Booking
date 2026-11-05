@@ -9,13 +9,29 @@ const bookingSchema = new Schema(
       required: true,
       ref: "User",
     },
-    bookingDate: { type: Date, required: true },
-    bookingTime: { type: String, required: true },
-    price: { type: String, required: true },
-    paymentStatus: { type: Boolean, default: false },
-    status: { type: Boolean, default: false },
+
+    startTime: { type: Date, required: true },
+    price: { type: Number, required: true, min: 0 },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "cancelled"],
+      default: "pending",
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid"],
+      default: "unpaid",
+    },
   },
   { timestamps: true },
+);
+
+bookingSchema.index(
+  { startTime: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["pending", "approved"] } },
+  },
 );
 
 module.exports = mongoose.model("Booking", bookingSchema);
