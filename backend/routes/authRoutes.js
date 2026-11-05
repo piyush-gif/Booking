@@ -8,9 +8,11 @@ const {
   refresh,
 } = require("../controllers/authController");
 
+const loginLimiter = require("../middlewares/rateLimiter");
+
 router.post("/register", register);
 
-router.post("/login", login);
+router.post("/login", loginLimiter, login);
 
 router.post("/logout", logout);
 
