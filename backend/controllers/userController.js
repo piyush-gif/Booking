@@ -1,11 +1,14 @@
-const User = require("../models/userSchema");
 const bcrypt = require("bcrypt");
+const mongoose = require("mongoose");
+
+const User = require("../models/userSchema");
+const Booking = require("../models/bookingSchema");
 const RefreshToken = require("../models/refreshTokenSchema");
 
 const getUser = async (req, res) => {
   const { id } = req.params;
   const { id: userId, role } = req.user;
-  if (!id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid Id" });
   }
   try {
@@ -33,7 +36,7 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-const changePassword = async (req, res, next) => {
+const changePassword = async (req, res) => {
   const { id } = req.params;
   const { id: userId } = req.user;
   const { oldPassword, newPassword } = req.body ?? {};
@@ -79,7 +82,7 @@ const updateUser = async (req, res) => {
   const { id } = req.params;
   const { id: userId, role } = req.user;
   const data = req.body;
-  if (!id || !data) {
+  if (!mongoose.Types.ObjectId.isValid(id) || !data) {
     return res.status(400).json({ error: "Invalid id or data" });
   }
   try {
@@ -118,7 +121,7 @@ const updateUser = async (req, res) => {
 const deleteUser = async (req, res) => {
   const { id } = req.params;
   const { id: userId, role } = req.user;
-  if (!id) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "Invalid Id" });
   }
   try {
@@ -131,6 +134,8 @@ const deleteUser = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "No user with that Id" });
     }
+    await RefreshToken.deleteMany({ user: id });
+    await Booking.deleteMany({ userId: id });
     res.status(200).json({ message: "User deleted successfully!" });
   } catch (error) {
     res.status(500).json({ error: error.message });
