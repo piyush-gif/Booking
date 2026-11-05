@@ -47,7 +47,7 @@ const getAllBookings = async (req, res) => {
 
 const createBooking = async (req, res) => {
   const userId = req.user.id;
-  const { bookingDate, bookingTime, price } = req.body;
+  const { bookingDate, bookingTime, price } = req.body ?? {};
   try {
     const booking = await Booking.create({
       userId,
@@ -87,13 +87,29 @@ const updateBooking = async (req, res) => {
           "This booking has already been accepted by the admin. Please contact support to make changes.",
       });
     }
-    const updateBooking = await Booking.findByIdAndUpdate(
-      id,
-      { ...data },
-      { new: true, runValidators: true },
-    );
 
-    res.status(200).json(updateBooking);
+    const allowed =
+      role === "admin"
+        ? ["bookingDate", "bookingTime", "price", "status", "paymentStatus"]
+        : ["bookingDate", "bookingTime"];
+
+    const updates = {};
+    for (const field of allowed) {
+      if (data[field] !== undefined) {
+        updates[field] = data[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    const updatedBooking = await Booking.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.status(200).json(updatedBooking);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
