@@ -1,17 +1,47 @@
+const mongoose = require("mongoose");
 const Booking = require("../models/bookingSchema");
+
+const PRICE_PER_HOUR = 1500;
+
+const NEPAL_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
+const MAX_DAYS_AHEAD = 30;
+const parseSlot = (value) => {
+  if (typeof value !== "string") {
+    return { error: "A valid startTime is required" };
+  }
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    return { error: "A valid startTime is required" };
+  }
+
+  const nepal = new Date(date.getTime() + NEPAL_OFFSET_MS);
+  if (nepal.getUTCMinutes() !== 0 || nepal.getUTCSeconds() !== 0) {
+    return { error: "Bookings must start on the hour (Nepal time)" };
+  }
+
+  const now = new Date();
+  if (date <= now) {
+    return { error: "You can't book a slot in the past" };
+  }
+  const latest = new Date(now.getTime() + MAX_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+  if (date > latest) {
+    return { error: `You can only book up to ${MAX_DAYS_AHEAD} days ahead` };
+  }
+  return { date };
+};
 
 const getBooking = async (req, res) => {
   const { id } = req.params;
   const { id: userId, role } = req.user;
 
-  if (!id) {
-    return res.status(400).json({ error: "Id is required" });
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid id" });
   }
   try {
     let query = { _id: id };
 
     if (role !== "admin") {
-      query.userId = userId; //{ _id: id, userId: userId }
+      query.userId = userId;
     }
     const booking = await Booking.findOne(query);
     if (!booking) {
@@ -47,16 +77,25 @@ const getAllBookings = async (req, res) => {
 
 const createBooking = async (req, res) => {
   const userId = req.user.id;
-  const { bookingDate, bookingTime, price } = req.body ?? {};
+  const { startTime } = req.body ?? {};
+
+  const { error: slotError, date } = parseSlot(startTime);
+  if (slotError) {
+    return res.status(400).json({ error: slotError });
+  }
   try {
     const booking = await Booking.create({
       userId,
-      bookingDate,
-      bookingTime,
-      price,
+      startTime: date,
+      price: PRICE_PER_HOUR,
     });
     res.status(201).json(booking);
   } catch (error) {
+    if (error.code === 11000) {
+      return res
+        .status(409)
+        .json({ error: "This slot has just been booked. Try another time." });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -66,8 +105,8 @@ const updateBooking = async (req, res) => {
   const { id: userId, role } = req.user;
   const data = req.body;
 
-  if (!id || !data) {
-    return res.status(400).json({ error: "Id required" });
+  if (!mongoose.Types.ObjectId.isValid(id) || !data) {
+    return res.status(400).json({ error: "Invalid id or data" });
   }
   try {
     let query = { _id: id };
@@ -81,17 +120,17 @@ const updateBooking = async (req, res) => {
         .json({ error: "Booking not found or unauthorized" });
     }
 
-    if (booking.status === true && role !== "admin") {
+    if (role !== "admin" && booking.status !== "pending") {
       return res.status(403).json({
         error:
-          "This booking has already been accepted by the admin. Please contact support to make changes.",
+          "This booking can no longer be changed. Please contact support to make changes.",
       });
     }
 
     const allowed =
       role === "admin"
-        ? ["bookingDate", "bookingTime", "price", "status", "paymentStatus"]
-        : ["bookingDate", "bookingTime"];
+        ? ["startTime", "price", "status", "paymentStatus"]
+        : ["startTime", "status"];
 
     const updates = {};
     for (const field of allowed) {
@@ -103,6 +142,23 @@ const updateBooking = async (req, res) => {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
     }
+    if (
+      role !== "admin" &&
+      updates.status !== undefined &&
+      updates.status !== "cancelled"
+    ) {
+      return res
+        .status(403)
+        .json({ error: "You can only cancel your own booking" });
+    }
+
+    if (updates.startTime !== undefined) {
+      const { error: slotError, date } = parseSlot(updates.startTime);
+      if (slotError) {
+        return res.status(400).json({ error: slotError });
+      }
+      updates.startTime = date;
+    }
 
     const updatedBooking = await Booking.findByIdAndUpdate(id, updates, {
       new: true,
@@ -111,6 +167,14 @@ const updateBooking = async (req, res) => {
 
     res.status(200).json(updatedBooking);
   } catch (error) {
+    if (error.code === 11000) {
+      return res
+        .status(409)
+        .json({ error: "This slot has just been booked. Try another time." });
+    }
+    if (error.name === "ValidationError" || error.name === "CastError") {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -119,8 +183,8 @@ const deleteBooking = async (req, res) => {
   const { id } = req.params;
   const { id: userId, role } = req.user;
 
-  if (!id) {
-    return res.status(400).json({ error: "Id required" });
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid id" });
   }
   try {
     let query = { _id: id };
@@ -134,10 +198,10 @@ const deleteBooking = async (req, res) => {
         .status(404)
         .json({ error: "Booking not found or unauthorized" });
     }
-    if (role !== "admin" && booking.status === true) {
+    if (role !== "admin" && booking.status !== "pending") {
       return res.status(403).json({
         error:
-          "This booking has already been accepted by the admin. Please contact support to make changes.",
+          "This booking can no longer be changed. Please contact support to make changes.",
       });
     }
     await Booking.findByIdAndDelete(id);
@@ -146,6 +210,7 @@ const deleteBooking = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
 module.exports = {
   getBooking,
   getUserBookings,
