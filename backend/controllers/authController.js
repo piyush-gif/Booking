@@ -39,7 +39,7 @@ const issueTokens = async (res, userId, role) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    path: "/auth/refresh",
+    path: "/auth",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 };
@@ -49,11 +49,25 @@ const register = async (req, res) => {
   if (!name || !email || !password || !phone) {
     return res.status(400).json({ error: "All fields are required" });
   }
+
+  if (typeof password !== "string" || password.length < 8) {
+    return res
+      .status(400)
+      .json({ error: "Password must be at least 8 characters" });
+  }
   try {
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({ name, email, password: hash, phone });
-    res.status(201).json(user);
+    res.status(201).json({ id: user._id, name: user.name, email: user.email });
   } catch (error) {
+    if (error.code === 11000) {
+      return res
+        .status(409)
+        .json({ error: "Email or phone is already in use" });
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 };
@@ -63,11 +77,16 @@ const login = async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: "Missing email or password" });
   }
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({ error: "Invalid email or password" });
+  }
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    }).select("+password");
     const match = user && (await bcrypt.compare(password, user.password));
     if (!match) {
-      return res.status(400).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "Invalid email or password" });
     }
     await issueTokens(res, user._id, user.role);
     res.status(200).json({ id: user._id, email: user.email });
@@ -82,8 +101,14 @@ const refresh = async (req, res) => {
   if (!token) {
     return res.status(401).json({ error: "Not authenticated" });
   }
+
+  let payload;
   try {
-    const payload = jwt.verify(token, process.env.REFRESH_TOKEN);
+    payload = jwt.verify(token, process.env.REFRESH_TOKEN);
+  } catch (error) {
+    return res.status(401).json({ error: "Invalid or expired refresh token" });
+  }
+  try {
     const stored = await RefreshToken.findOneAndDelete({
       hashedToken: hashRefresh(token),
     });
@@ -102,7 +127,11 @@ const refresh = async (req, res) => {
 };
 
 const logout = async (req, res) => {
+  const token = req.cookies.refreshToken;
   try {
+    if (token) {
+      await RefreshToken.deleteOne({ hashedToken: hashRefresh(token) });
+    }
     res.clearCookie("accessToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -113,7 +142,7 @@ const logout = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/auth/refresh",
+      path: "/auth",
     });
 
     res.status(200).json({ message: "Logged out successfully!" });

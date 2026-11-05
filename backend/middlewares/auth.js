@@ -8,13 +8,10 @@ const requireAuth = async (req, res, next) => {
   }
   try {
     const payload = jwt.verify(token, process.env.ACCESS_TOKEN);
-    if (!payload) {
-      return res.status(400).json({ error: "Invalid Accesss Token" });
-    }
     req.user = { id: payload.sub, role: payload.role };
     next();
   } catch (error) {
-    return res.status(403).json({ error: "Invalid or expired token" });
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 };
 
