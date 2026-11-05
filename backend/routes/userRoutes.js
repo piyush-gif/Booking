@@ -8,6 +8,7 @@ const {
   getAllUsers,
   updateUser,
   deleteUser,
+  changePassword,
 } = require("../controllers/userController");
 
 router.get("/", requireAuth, requireAdmin, getAllUsers);
@@ -15,6 +16,8 @@ router.get("/", requireAuth, requireAdmin, getAllUsers);
 router.get("/:id", requireAuth, getUser);
 
 router.patch("/:id", requireAuth, updateUser);
+
+router.patch("/:id/password", requireAuth, changePassword);
 
 router.delete("/:id", requireAuth, deleteUser);
 

@@ -13,13 +13,13 @@ const {
   deleteBooking,
 } = require("../controllers/bookingController");
 
-router.get("/:id", requireAuth, getBooking);
-
 router.get("/user-bookings", requireAuth, getUserBookings);
 
 router.get("/", requireAuth, requireAdmin, getAllBookings);
 
 router.post("/", requireAuth, createBooking);
+
+router.get("/:id", requireAuth, getBooking);
 
 router.patch("/:id", requireAuth, updateBooking);
 
