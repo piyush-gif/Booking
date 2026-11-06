@@ -11,6 +11,7 @@ const {
   createBooking,
   updateBooking,
   deleteBooking,
+  getTakenSlots,
 } = require("../controllers/bookingController");
 
 router.get("/user-bookings", requireAuth, getUserBookings);
