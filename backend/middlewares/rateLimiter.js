@@ -7,4 +7,4 @@ const loginLimiter = rateLimit({
   message: { error: "Too many login attempts. Try again in 15 minutes." },
 });
 
-module.exports = { loginLimiter };
+module.exports = loginLimiter;

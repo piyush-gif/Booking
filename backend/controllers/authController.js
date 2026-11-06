@@ -9,6 +9,14 @@ const hashRefresh = (token) => {
   return crypto.createHash("sha256").update(token).digest("hex");
 };
 
+const isProd = process.env.NODE_ENV === "production";
+const cookieBase = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: "lax",
+};
+const refreshPath = process.env.REFRESH_COOKIE_PATH || "/auth";
+
 const issueTokens = async (res, userId, role) => {
   const accessToken = jwt.sign(
     { sub: userId, role: role },
@@ -20,6 +28,7 @@ const issueTokens = async (res, userId, role) => {
 
   const refreshToken = jwt.sign({ sub: userId }, process.env.REFRESH_TOKEN, {
     expiresIn: "7d",
+    jwtid: crypto.randomUUID(),
   });
 
   await RefreshToken.create({
@@ -29,19 +38,33 @@ const issueTokens = async (res, userId, role) => {
   });
 
   res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    ...cookieBase,
     maxAge: 15 * 60 * 1000,
   });
 
   res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/auth",
+    ...cookieBase,
+    path: refreshPath,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+};
+
+const me = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(401).json({ error: "User no longer exists" });
+    }
+    res.status(200).json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
 
 const register = async (req, res) => {
@@ -89,7 +112,13 @@ const login = async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
     await issueTokens(res, user._id, user.role);
-    res.status(200).json({ id: user._id, email: user.email });
+    res.status(200).json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -132,17 +161,11 @@ const logout = async (req, res) => {
     if (token) {
       await RefreshToken.deleteOne({ hashedToken: hashRefresh(token) });
     }
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
+    res.clearCookie("accessToken", cookieBase);
 
     res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/auth",
+      ...cookieBase,
+      path: refreshPath,
     });
 
     res.status(200).json({ message: "Logged out successfully!" });
@@ -151,4 +174,4 @@ const logout = async (req, res) => {
   }
 };
 
-module.exports = { register, login, logout, refresh };
+module.exports = { register, login, logout, refresh, me };

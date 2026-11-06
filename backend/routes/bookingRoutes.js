@@ -19,6 +19,8 @@ router.get("/", requireAuth, requireAdmin, getAllBookings);
 
 router.post("/", requireAuth, createBooking);
 
+router.get("/taken", requireAuth, getTakenSlots);
+
 router.get("/:id", requireAuth, getBooking);
 
 router.patch("/:id", requireAuth, updateBooking);

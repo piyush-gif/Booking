@@ -114,6 +114,9 @@ const updateUser = async (req, res) => {
     }
     res.status(200).json(updatedUser);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: "Phone is already in use" });
+    }
     res.status(500).json({ error: error.message });
   }
 };

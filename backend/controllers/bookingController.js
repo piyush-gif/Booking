@@ -5,6 +5,9 @@ const PRICE_PER_HOUR = 1500;
 
 const NEPAL_OFFSET_MS = (5 * 60 + 45) * 60 * 1000;
 const MAX_DAYS_AHEAD = 30;
+const OPEN_HOUR = 6;
+const CLOSE_HOUR = 22;
+
 const parseSlot = (value) => {
   if (typeof value !== "string") {
     return { error: "A valid startTime is required" };
@@ -18,6 +21,10 @@ const parseSlot = (value) => {
   if (nepal.getUTCMinutes() !== 0 || nepal.getUTCSeconds() !== 0) {
     return { error: "Bookings must start on the hour (Nepal time)" };
   }
+  const hour = nepal.getUTCHours();
+  if (hour < OPEN_HOUR || hour >= CLOSE_HOUR) {
+    return { error: "Bookings run from 6 AM to 9 PM (Nepal time)" };
+  }
 
   const now = new Date();
   if (date <= now) {
@@ -28,6 +35,23 @@ const parseSlot = (value) => {
     return { error: `You can only book up to ${MAX_DAYS_AHEAD} days ahead` };
   }
   return { date };
+};
+
+const getTakenSlots = async (req, res) => {
+  const from = new Date(req.query.from);
+  const to = new Date(req.query.to);
+  if (isNaN(from) || isNaN(to) || to <= from) {
+    return res.status(400).json({ error: "Valid from and to are required" });
+  }
+  try {
+    const bookings = await Booking.find({
+      startTime: { $gte: from, $lt: to },
+      status: { $in: ["pending", "approved"] },
+    }).select("startTime -_id");
+    res.status(200).json(bookings.map((b) => b.startTime));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
 
 const getBooking = async (req, res) => {
@@ -68,7 +92,10 @@ const getUserBookings = async (req, res) => {
 
 const getAllBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find({});
+    const bookings = await Booking.find({}).populate(
+      "userId",
+      "name phone email",
+    );
     res.status(200).json(bookings);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -218,4 +245,5 @@ module.exports = {
   createBooking,
   updateBooking,
   deleteBooking,
+  getTakenSlots,
 };
