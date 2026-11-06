@@ -5,7 +5,7 @@ export default function Layout() {
   return (
     <>
       <Navbar />
-      <main className="max-w-5xl mx-auto p-4">
+      <main className="mx-auto max-w-5xl p-4">
         <Outlet />
       </main>
     </>
